@@ -1,0 +1,57 @@
+scoring_type,stat_category,stat_name,standard_points,ppr_points,half_ppr_points,six_pt_passing_td,te_premium,superflex_notes
+Passing,Yards,Passing Yards (per 25),1,1,1,1,1,Same value across formats
+Passing,Touchdowns,Passing TD,4,4,4,6,4,Higher value in Superflex leagues
+Passing,Interceptions,Interception Thrown,-2,-2,-2,-2,-2,Same across formats
+Passing,Two Point Conversion,2-Point Conversion,2,2,2,2,2,Same across formats
+Rushing,Yards,Rushing Yards (per 10),1,1,1,1,1,Same value across formats
+Rushing,Touchdowns,Rushing TD,6,6,6,6,6,Same across formats
+Rushing,Two Point Conversion,2-Point Conversion,2,2,2,2,2,Same across formats
+Receiving,Yards,Receiving Yards (per 10),1,1,1,1,1,Same value across formats
+Receiving,Touchdowns,Receiving TD,6,6,6,6,6,Same across formats
+Receiving,Receptions,Reception,0,1,0.5,0,1,Core difference between scoring types
+Receiving,Two Point Conversion,2-Point Conversion,2,2,2,2,2,Same across formats
+TE Receiving,Receptions,TE Reception,0,1,0.5,0,1.5,TE Premium gives extra 0.5 per catch
+Fumbles,Lost,Fumble Lost,-2,-2,-2,-2,-2,Same across formats
+Fumbles,Recovery,Fumble Recovery TD,6,6,6,6,6,Same across formats
+Returns,Touchdowns,Kick Return TD,6,6,6,6,6,Same across formats
+Returns,Touchdowns,Punt Return TD,6,6,6,6,6,Same across formats
+Returns,Yards,Return Yards (per 10),0,0,0,0,0,Rarely used in standard leagues
+Kicking,Extra Points,PAT Made,1,1,1,1,1,Same across formats
+Kicking,Extra Points,PAT Missed,-1,-1,-1,-1,-1,Not used in all leagues
+Kicking,Field Goals,FG Made 0-39 yards,3,3,3,3,3,Same across formats
+Kicking,Field Goals,FG Made 40-49 yards,3,3,3,3,3,Same across formats
+Kicking,Field Goals,FG Made 50+ yards,5,5,5,5,5,Bonus for long kicks
+Kicking,Field Goals,FG Missed 0-39 yards,-1,-1,-1,-1,-1,Not used in all leagues
+Kicking,Field Goals,FG Missed 40-49 yards,0,0,0,0,0,Usually no penalty
+Kicking,Field Goals,FG Missed 50+ yards,0,0,0,0,0,Usually no penalty
+Defense,Points Allowed,0 Points Allowed,10,10,10,10,10,Same across formats
+Defense,Points Allowed,1-6 Points Allowed,7,7,7,7,7,Same across formats
+Defense,Points Allowed,7-13 Points Allowed,4,4,4,4,4,Same across formats
+Defense,Points Allowed,14-20 Points Allowed,1,1,1,1,1,Same across formats
+Defense,Points Allowed,21-27 Points Allowed,0,0,0,0,0,Same across formats
+Defense,Points Allowed,28-34 Points Allowed,-1,-1,-1,-1,-1,Same across formats
+Defense,Points Allowed,35+ Points Allowed,-4,-4,-4,-4,-4,Same across formats
+Defense,Turnovers,Interception,2,2,2,2,2,Same across formats
+Defense,Turnovers,Fumble Recovery,2,2,2,2,2,Same across formats
+Defense,Sacks,Sack,1,1,1,1,1,Same across formats
+Defense,Safeties,Safety,2,2,2,2,2,Same across formats
+Defense,Touchdowns,Defensive TD,6,6,6,6,6,Same across formats
+Defense,Touchdowns,Kick Return TD,6,6,6,6,6,Same across formats
+Defense,Touchdowns,Punt Return TD,6,6,6,6,6,Same across formats
+Defense,Blocks,Blocked Kick,2,2,2,2,2,Not used in all leagues
+IDP,Tackles,Solo Tackle,1,1,1,1,1,IDP leagues only
+IDP,Tackles,Assisted Tackle,0.5,0.5,0.5,0.5,0.5,IDP leagues only
+IDP,Sacks,Sack,4,4,4,4,4,IDP leagues only
+IDP,Interceptions,Interception,6,6,6,6,6,IDP leagues only
+IDP,Fumbles,Forced Fumble,4,4,4,4,4,IDP leagues only
+IDP,Fumbles,Fumble Recovery,2,2,2,2,2,IDP leagues only
+IDP,Passes,Pass Defended,1,1,1,1,1,IDP leagues only
+IDP,Touchdowns,Defensive TD,6,6,6,6,6,IDP leagues only
+Bonuses,Passing,300-399 Passing Yards,3,3,3,3,3,Optional bonus
+Bonuses,Passing,400+ Passing Yards,5,5,5,5,5,Optional bonus
+Bonuses,Rushing,100-199 Rushing Yards,3,3,3,3,3,Optional bonus
+Bonuses,Rushing,200+ Rushing Yards,5,5,5,5,5,Optional bonus
+Bonuses,Receiving,100-199 Receiving Yards,3,3,3,3,3,Optional bonus
+Bonuses,Receiving,200+ Receiving Yards,5,5,5,5,5,Optional bonus
+Bonuses,Touchdowns,40+ Yard TD Bonus,2,2,2,2,2,Optional bonus
+Bonuses,Touchdowns,50+ Yard TD Bonus,3,3,3,3,3,Optional bonus
