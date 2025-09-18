@@ -1,5 +1,6 @@
 import pandas as pd
 import feedparser
+import os
 
 class NewsScraper:
     def __init__(self):
@@ -30,28 +31,19 @@ class NewsScraper:
             info['published'] = entry['published']
             info['link'] = entry['link']
             info['summary'] = entry['summary']
-            self.news.append(info)
+            self.news.insert(0, info)
 
     def save_to_csv(self):
         if not self.news:
             print('No new news to save')
             return None
         
-        new_df = pd.DataFrame(self.news)
-        
-        try:
-            existing_df = pd.read_csv(self.csv_path)
-            new_df = pd.concat([new_df, existing_df], ignore_index=True)
-        except FileNotFoundError:
-            pass
-
-        new_df.to_csv(self.csv_path, index=False)
+        df = pd.DataFrame(self.news)
+        df.to_csv(self.csv_path, mode='a', header=not os.path.exists(self.csv_path), index=False)
 
         print(f"Scraping complete!")
         print(f"Total entries found: {len(self.news)}")
         print(f"Saved to: {self.csv_path}")
-
-        return new_df
 
 def main():
     scraper = NewsScraper()
