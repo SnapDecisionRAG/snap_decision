@@ -6,9 +6,9 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as selenium_ec
 from bs4 import BeautifulSoup
 
-class ESPNScraper:
+class ESPNProjectionScraper:
     def __init__(self, headless=True):
-        self.base_url = "https://fantasy.espn.com/football/players/projections"
+        self.url = "https://fantasy.espn.com/football/players/projections"
         self.positions = {'QB', 'RB', 'WR', 'TE', 'K', 'D/ST'}
         self.players = []
 
@@ -16,7 +16,10 @@ class ESPNScraper:
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument('--window-size=1920,1080')
+        chrome_options.add_argument('--mute-audio')
         chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+
+        if headless: chrome_options.add_argument('--headless')
 
         self.browser = webdriver.Chrome(options=chrome_options)
 
@@ -105,7 +108,7 @@ class ESPNScraper:
 
     def scrape_all_pages(self, max_pages=25):
         try:
-            self.browser.get(self.base_url)
+            self.browser.get(self.url)
             current_page = 1
 
             while current_page <= max_pages:
@@ -140,14 +143,14 @@ class ESPNScraper:
         finally:
             self.browser.quit()
 
-    def save_to_csv(self, filename='data/sql/this_weeks_projections.csv'):
+    def save_to_csv(self, filename='../../data/sql/this_weeks_projections.csv'):
         if not self.players:
             print('No players saved - ESPN structure may have changed')
             return None
         
         df = pd.DataFrame(self.players)
         df = df.drop_duplicates(subset=['name', 'position'], keep='first')
-        # df = df.sort_values(['position', 'name'])
+        df = df.sort_values(['position', 'name'])
         df.to_csv(filename, index=False)
 
         print(f"\nScraping complete!")
@@ -162,16 +165,16 @@ class ESPNScraper:
         return df
     
 def main():
-    print("ESPN Fantasy Football Player Scraper (Selenium)")
+    print("ESPN Fantasy Football Player Scraper")
     print("=" * 50)
 
-    scraper = ESPNScraper(headless=False)
+    scraper = ESPNProjectionScraper(headless=False)
 
     try:
         players = scraper.scrape_all_pages(max_pages=25)
 
         if players:
-            df = scraper.save_to_csv('../../data/sql/this_weeks_projections.csv')
+            scraper.save_to_csv('../../data/sql/this_weeks_projections.csv')
         else:
             print("No players scraped - check debug files")
 
