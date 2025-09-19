@@ -210,7 +210,7 @@ CREATE TABLE players (
 """
 
 SCRAPERS_LAST_RUN_SCHEMA = """
-CREATE TABLE scraper_runs (
+CREATE TABLE scrapers_last_run (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     scraper_name TEXT NOT NULL,
     last_run TIMESTAMP NOT NULL,
@@ -245,7 +245,7 @@ SCHEMAS = {
     'latest_news': LATEST_NEWS_SCHEMA,
     'schedule': SCHEDULE_SCHEMA,
     'players': PLAYERS_SCHEMA,
-    'scraper_runs': SCRAPERS_LAST_RUN_SCHEMA,
+    'scrapers_last_run': SCRAPERS_LAST_RUN_SCHEMA,
     'scoring_template': SCORING_TEMPLATE_SCHEMA
 }
 
@@ -259,5 +259,5 @@ INDEXES = [
     "CREATE INDEX idx_weather_teams ON weather(away_team, home_team);",
     "CREATE INDEX idx_schedule_week ON schedule(week);",
     "CREATE INDEX idx_players_position ON players(position);",
-    "CREATE INDEX idx_scraper_name ON scraper_runs(scraper_name);"
+    "CREATE INDEX idx_scraper_name ON scrapers_last_run(scraper_name);"
 ]
