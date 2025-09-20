@@ -192,8 +192,7 @@ CREATE TABLE schedule (
     away_team TEXT,
     home_team TEXT,
     time_et TEXT,
-    network TEXT,
-    location TEXT,
+    international_location TEXT,
     bye_teams TEXT
 );
 """
@@ -229,10 +228,7 @@ CREATE TABLE scoring_template (
     stat_name TEXT,
     standard_points REAL,
     ppr_points REAL,
-    half_ppr_points REAL,
-    six_pt_passing_td REAL,
-    te_premium REAL,
-    superflex_notes TEXT
+    half_ppr_points REAL
 );
 """
 
