@@ -90,7 +90,8 @@ def main():
     try:
         controller = ScraperController()
 
-        controller.run_weather_scraper()
+        if daily_needs_to_run(controller.db, "weather"):
+            controller.run_weather_scraper()
 
     except Exception as e:
         print(f"Error running scrapers: {e}")

@@ -30,6 +30,7 @@ def get_current_week(db_manager):
         return None
 
 def daily_needs_to_run(db_manager, scraper_name, min_hour=10):
+    print(f"######################################################################################################")
     now = datetime.now()
     if now.hour < min_hour:
         return False
@@ -44,8 +45,9 @@ def daily_needs_to_run(db_manager, scraper_name, min_hour=10):
             AND last_run >= ?
         """, (scraper_name, today))
 
-    result = cursor.fetchone()
-    return result is None
+        result = cursor.fetchone()
+        print(f"#####################################################################################{result}")
+        return result is None
 
 def get_week_range(db_manager, week):
     with db_manager.get_connection() as conn:
