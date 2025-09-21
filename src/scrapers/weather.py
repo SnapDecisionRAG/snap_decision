@@ -9,10 +9,14 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as selenium_ec
 from bs4 import BeautifulSoup
 
+from src.config import WEATHER_DIR
+
 class WeatherScraper:
-    def __init__(self, headless=False):
+    def __init__(self, db_manager, week, headless=True):
+        self.db = db_manager
+        self.week = week
         self.url = "https://rotogrinders.com/weather/nfl"
-        self.csv_path = '../../data/sql/weather.csv'
+        self.csv_path = WEATHER_DIR / f"weather_week_{week}.csv"
         self.date = date.today().strftime("%Y-%m-%d")
         self.forecasts = []
 
@@ -49,83 +53,92 @@ class WeatherScraper:
             return False
 
     def scrape_forecasts(self):
-        self.wait_for_page_to_load()
-        soup = BeautifulSoup(self.browser.page_source, 'html.parser')
+        try:
+            self.wait_for_page_to_load()
+            soup = BeautifulSoup(self.browser.page_source, 'html.parser')
 
-        week_text = soup.select_one('.module-body.content p').get_text()
-        week = re.search(r'Week (\d+)', week_text).group(1)
+            week_text = soup.select_one('.module-body.content p').get_text()
+            week = re.search(r'Week (\d+)', week_text).group(1)
 
-        games = soup.select('.module:has(.module-header)')
-        for game in games:
-            forecast = {}
+            games = soup.select('.module:has(.module-header)')
+            for game in games:
+                forecast = {}
 
-            forecast['week'] = week
-            forecast['forecast_date'] = self.date
+                forecast['week'] = week
+                forecast['forecast_date'] = self.date
 
-            teams = game.select('.team-nameplate-mascot')
-            forecast['away_team'] = teams[0].get_text().strip()
-            forecast['home_team'] = teams[1].get_text().strip()
+                teams = game.select('.team-nameplate-mascot')
+                forecast['away_team'] = teams[0].get_text().strip()
+                forecast['home_team'] = teams[1].get_text().strip()
 
-            date_time = game.select_one('.game-weather-time').get_text().strip()
-            date_time = date_time.split(' ')
-            raw_date = date_time[0]
-            month, day = raw_date.split('/')
-            year = datetime.now().year
-            formatted_date = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
-            forecast['date'] = formatted_date
-            forecast['start_time'] = f"{date_time[1]} {date_time[2]}"
+                date_time = game.select_one('.game-weather-time').get_text().strip()
+                date_time = date_time.split(' ')
+                raw_date = date_time[0]
+                month, day = raw_date.split('/')
+                year = datetime.now().year
+                formatted_date = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+                forecast['date'] = formatted_date
+                forecast['start_time'] = f"{date_time[1]} {date_time[2]}"
 
-            stadium = game.select_one('.game-weather-stadium')
-            forecast['stadium'] = stadium.get_text().strip().replace('AT ', '')
+                stadium = game.select_one('.game-weather-stadium')
+                forecast['stadium'] = stadium.get_text().strip().replace('AT ', '')
 
-            if game.select_one('.weather-column-empty'):
-                forecast['covered_dome'] = True
+                if game.select_one('.weather-column-empty'):
+                    forecast['covered_dome'] = True
+                    self.forecasts.append(forecast)
+                    continue
+                forecast['covered_dome'] = False
+
+                hourly_rows = game.select('tr')
+
+                forecast_times = []
+                time_row = hourly_rows[1].select('td')
+                for table_data in time_row:
+                    forecast_times.append(table_data.get_text().strip())
+
+                precip_row = hourly_rows[2].select('span.weather-column-precip')
+                precip_dict = {}
+                for ind, ele in enumerate(precip_row):
+                    precip_dict[forecast_times[ind]] = int(ele.get_text().strip()[:-1])
+                forecast['precipitation_percent_chance'] = precip_dict
+
+                temp_row = hourly_rows[3].select('td span:last-child')
+                temp_dict = {}
+                for ind, ele in enumerate(temp_row):
+                    temp_dict[forecast_times[ind]] = int(ele.get_text().strip()[:-1])
+                forecast['temperature'] = temp_dict
+
+                humidity_row = hourly_rows[4].select('td span')
+                humidity_dict = {}
+                for ind, ele in enumerate(humidity_row):
+                    humidity_dict[forecast_times[ind]] = int(ele.get_text().strip()[:-1])
+                forecast['humidity'] = humidity_dict
+
+                dewpoint_row = hourly_rows[5].select('td span')
+                dewpoint_dict = {}
+                for ind, ele in enumerate(dewpoint_row):
+                    dewpoint_dict[forecast_times[ind]] = int(ele.get_text().strip()[:-1])
+                forecast['dewpoint'] = dewpoint_dict
+
+                wind_row = hourly_rows[6].select('.weather-column-wind')
+                wind_row = [div.select('span') for div in wind_row]
+                wind_direction = {}
+                wind_mph = {}
+                for ind, values in enumerate(wind_row):
+                    wind_direction[forecast_times[ind]] = values[0].get_text().strip()
+                    wind_mph[forecast_times[ind]] = int(values[1].get_text().strip()[:-4])
+                forecast['wind_direction'] = wind_direction
+                forecast['wind_mph'] = wind_mph
+
                 self.forecasts.append(forecast)
-                continue
-            forecast['covered_dome'] = False
 
-            hourly_rows = game.select('tr')
+            return True
 
-            forecast_times = []
-            time_row = hourly_rows[1].select('td')
-            for table_data in time_row:
-                forecast_times.append(table_data.get_text().strip())
-
-            precip_row = hourly_rows[2].select('span.weather-column-precip')
-            precip_dict = {}
-            for ind, ele in enumerate(precip_row):
-                precip_dict[forecast_times[ind]] = int(ele.get_text().strip()[:-1])
-            forecast['precipitation_percent_chance'] = precip_dict
-
-            temp_row = hourly_rows[3].select('td span:last-child')
-            temp_dict = {}
-            for ind, ele in enumerate(temp_row):
-                temp_dict[forecast_times[ind]] = int(ele.get_text().strip()[:-1])
-            forecast['temperature'] = temp_dict
-
-            humidity_row = hourly_rows[4].select('td span')
-            humidity_dict = {}
-            for ind, ele in enumerate(humidity_row):
-                humidity_dict[forecast_times[ind]] = int(ele.get_text().strip()[:-1])
-            forecast['humidity'] = humidity_dict
-
-            dewpoint_row = hourly_rows[5].select('td span')
-            dewpoint_dict = {}
-            for ind, ele in enumerate(dewpoint_row):
-                dewpoint_dict[forecast_times[ind]] = int(ele.get_text().strip()[:-1])
-            forecast['dewpoint'] = dewpoint_dict
-
-            wind_row = hourly_rows[6].select('.weather-column-wind')
-            wind_row = [div.select('span') for div in wind_row]
-            wind_direction = {}
-            wind_mph = {}
-            for ind, values in enumerate(wind_row):
-                wind_direction[forecast_times[ind]] = values[0].get_text().strip()
-                wind_mph[forecast_times[ind]] = int(values[1].get_text().strip()[:-4])
-            forecast['wind_direction'] = wind_direction
-            forecast['wind_mph'] = wind_mph
-
-            self.forecasts.append(forecast)
+        except Exception as e:
+            print(f"Error scraping weather data: {e}")
+            return False
+        finally:
+            if self.browser: self.browser.quit()
 
     def save_to_csv(self):
         if not self.forecasts:
@@ -139,11 +152,79 @@ class WeatherScraper:
         print(f"Total entries found: {len(self.forecasts)}")
         print(f"Saved to: {self.csv_path}")
 
+    def save_to_db(self):
+        if not self.forecasts:
+            raise ValueError('No forecasts to save to db')
+        
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute("DELETE FROM weather WHERE week = ?", (self.week,))
+            print(f"Deleted existing weather data for week {self.week}")
+
+            insert_query = """
+                INSERT INTO weather (
+                    week, forecast_date, away_team, home_team, game_date, start_time,
+                    stadium, covered_dome, precipitation_percent_chance, temperature,
+                    humidity, dewpoint, wind_direction, wind_mph
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+
+            weather_data = []
+            for forecast in self.forecasts:
+                import json
+                weather_data.append((
+                    forecast['week'],
+                    forecast['forecast_date'],
+                    forecast['away_team'],
+                    forecast['home_team'],
+                    forecast['date'],
+                    forecast['start_time'],
+                    forecast['stadium'],
+                    forecast['covered_dome'],
+                    json.dumps(forecast.get('precipitation_percent_chance', {})),
+                    json.dumps(forecast.get('temperature', {})),
+                    json.dumps(forecast.get('humidity', {})),
+                    json.dumps(forecast.get('dewpoint', {})),
+                    json.dumps(forecast.get('wind_direction', {})),
+                    json.dumps(forecast.get('wind_mph', {}))
+                ))
+
+            cursor.executemany(insert_query, weather_data)
+            conn.commit()
+            print(f"Inserted {len(weather_data)} weather records into database")
+
+    def run(self):
+        try:
+            print(f"Starting weather scraper for week {self.week}...")
+
+            success = self.scrape_forecasts()
+            if not success:
+                raise Exception("Failed to scrape weather data")
+            
+            self.save_to_csv()
+            self.save_to_db()
+
+            print(f"Weather scraper completed successfully for week {self.week}")
+            return True
+        
+        except Exception as e:
+            print(f"Weather scraper failed: {e}")
+            return False
 
 def main():
-    scraper = WeatherScraper()
-    scraper.scrape_forecasts()
-    scraper.save_to_csv()
+    from src.database.sql_db_manager import DBManager
+    from src.utils.scraper_utils import get_current_week
+
+    db_manager = DBManager()
+    current_week = get_current_week(db_manager)
+
+    if current_week is None:
+        print("Could not determine current NFL week")
+        return
+
+    scraper = WeatherScraper(db_manager, current_week)
+    scraper.run()
 
 if __name__ == "__main__":
     main()
