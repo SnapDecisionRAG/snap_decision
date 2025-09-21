@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+
+import sys
+from datetime import datetime, date
+
+from src.database.sql_db_manager import DBManager
+from src.database.sql_static_data_loader import StaticDataLoader
+from src.utils.scraper_utils import get_current_week, daily_needs_to_run, get_week_range
+
+from src.scrapers.weather import WeatherScraper
+from src.scrapers.injuries import InjuriesScraper
+from src.scrapers.latest_news import NewsScraper
+from src.scrapers.latest_buzz import LatestBuzzScraper
+from src.scrapers.espn_projection_scraper import ESPNProjectionScraper
+from src.scrapers.espn_scores_scraper import ESPNScoresScraper
+
+class ScraperController:
+    def __init__(self):
+        self.db = DBManager()
+
+        if self._is_first_run():
+            print("First run detected - Loading static data...")
+            StaticDataLoader(self.db)
+
+        self.execution_log = {
+            'timestamp': datetime.now(),
+            'scrapers_run': [],
+            'scrapers_skipped': [],
+            'errors': [],
+        }
+
+    def _is_first_run(self):
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM schedule")
+            row_count = cursor.fetchone()[0]
+            return row_count == 0
+
+    def insert_scraper_run(
+        self,
+        scraper_name,
+        status,
+        records_processed=0,
+        error_message=None
+    ):
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO scrapers_last_run
+                (scraper_name, last_run, status, records_processed, error_message)
+                VALUES (?, ?, ?, ?, ?)
+            """, (scraper_name, datetime.now(), status, records_processed, error_message))
+
+            conn.commit()
+
+    def run_weather_scraper(self):
+        scraper_name = 'weather'
+
+        try:
+            week = get_current_week(self.db)
+            if week == None:
+                self.execution_log['errors'].append(f"{scraper_name}: Could not determine current week")
+                return False
+
+            print(f"\n{'='*50}")
+            print(f"Running Weather Scraper for Week {week}")
+            print(f"{'='*50}")
+
+            number_records = WeatherScraper(self.db, week).run()
+
+            if number_records:
+                self.insert_scraper_run(scraper_name, "success", number_records)
+                self.execution_log['scrapers_run'].append(f"{scraper_name} (Week {week})")
+                print(f"✅ Weather scraper completed")
+                return True
+            else:
+                self.insert_scraper_run(scraper_name, "no_data", 0, "No weather data found")
+                self.execution_log['scrapers_skipped'].append(f"{scraper_name}: No data available")
+                print(f"⚠️ Weather scraper: No data available")
+                return False
+
+        except Exception as e:
+            error_message = f"Weather scraper error: {e}"
+            self.insert_scraper_run(scraper_name, "error", 0, error_message)
+            self.execution_log['errors'].append(error_message)
+            print(f"❌ {error_message}")
+            return False
+
+def main():
+    try:
+        controller = ScraperController()
+
+        controller.run_weather_scraper()
+
+    except Exception as e:
+        print(f"Error running scrapers: {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

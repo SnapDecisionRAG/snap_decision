@@ -7,18 +7,7 @@ class StaticDataLoader:
         self.db = db_manager
         self.data_dir = Path("data/sql")
 
-        if self._is_first_run():
-            print("First run detected - Loading static data...")
-            self.load_all_data()
-        else:
-            print("Static data already loaded")
-
-    def _is_first_run(self):
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM schedule")
-            row_count = cursor.fetchone()[0]
-            return row_count == 0
+        self.load_all_data()
 
     def load_all_data(self):
         print("Starting historical data loading process...")

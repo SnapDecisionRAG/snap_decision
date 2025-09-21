@@ -206,7 +206,7 @@ class WeatherScraper:
             self.save_to_db()
 
             print(f"Weather scraper completed successfully for week {self.week}")
-            return True
+            return len(self.forecasts)
         
         except Exception as e:
             print(f"Weather scraper failed: {e}")
