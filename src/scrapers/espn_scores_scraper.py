@@ -5,10 +5,14 @@ from selenium.webdriver.common.by import By as selenium_by
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as selenium_ec
 from bs4 import BeautifulSoup
+from src.config import SQL_DATA_DIR
 
 class ESPNScoresScraper:
-    def __init__(self, headless=False):
+    def __init__(self, db_manager, week, headless=True):
+        self.db = db_manager
+        self.week = week
         self.url = 'https://fantasy.espn.com/football/leaders'
+        self.csv_path = SQL_DATA_DIR / 'actual_scores' / f'actual_scores_week_{week}.csv'
         self.positions = {'QB', 'RB', 'WR', 'TE', 'K', 'D/ST'}
         self.players = []
 
@@ -63,7 +67,7 @@ class ESPNScoresScraper:
             print(f'Error clicking D/ST position: {e}')
             return False
         
-    def extract_players_from_page(self, week):
+    def extract_players_from_page(self):
         players = []
         soup = BeautifulSoup(self.browser.page_source, 'html.parser')
         selectors = {
@@ -86,7 +90,7 @@ class ESPNScoresScraper:
 
         for data_idx in player_row_groups.keys():
             try:
-                player = {'week': week}
+                player = {'week': self.week}
                 player_cells = []
                 
                 for row in player_row_groups[data_idx]:
@@ -159,23 +163,24 @@ class ESPNScoresScraper:
             print(f'error loading next page: {e}')
             return False
         
-    def scrape_week(self, week, max_pages=25):
+    def scrape_all_pages(self, max_pages=25):
         url = (
-            f'{self.url}?statSplit=singleScoringPeriod&scoringPeriodId={week}'
+            f'{self.url}?statSplit=singleScoringPeriod&scoringPeriodId=' +
+            f'{self.week}'
         )
-        print(f'\nScraping Week {week}: {url}')
+        print(f'\nScraping Week {self.week}: {url}')
 
         try:
             self.browser.get(url)
             current_page = 1
 
             while current_page <= max_pages:
-                print(f'Offensive Players Week {week}, Page {current_page}...')
+                print(f'Players Week {self.week}, Page {current_page}...')
 
                 if not self.wait_for_page_to_load():
                     print('Failed to load page, trying anyway...')
 
-                current_page_players = self.extract_players_from_page(week)
+                current_page_players = self.extract_players_from_page()
                 
                 if not current_page_players and current_page == 1:
                     print('No players on first page - may be an issue')
@@ -195,7 +200,7 @@ class ESPNScoresScraper:
                             break
                         current_page += 1
                     else:
-                        print(f'Reached last page for week {week}')
+                        print(f'Reached last page for week {self.week}')
                         break
                 else:
                     print(f'Reached max page limit ({max_pages})')
@@ -203,12 +208,12 @@ class ESPNScoresScraper:
             
             time.sleep(2)
             self.click_dst_position()
-            print(f'Defense Week {week}, Page 1...')
+            print(f'Defense Week {self.week}, Page 1...')
 
             if not self.wait_for_page_to_load():
                 print('Failed to load page, trying anyway...')
 
-            current_page_players = self.extract_players_from_page(week)
+            current_page_players = self.extract_players_from_page()
             
             if current_page_players:
                 self.players.extend(current_page_players)
@@ -219,60 +224,104 @@ class ESPNScoresScraper:
             return self.players
 
         except Exception as e:
-            print(f'Error scraping week {week}: {e}')
+            print(f'Error scraping week {self.week}: {e}')
+            return []
+        finally:
+            self.close()
 
-    def save_to_csv(self, filename='data/sql/actual_scores.csv'):
+    def save_to_csv(self):
         if not self.players:
             print('No players to save')
             return None
         
         df = pd.DataFrame(self.players)
         df = df.drop_duplicates(subset=['name', 'position'], keep='first')
-        df.to_csv(filename, index=False)
+        df.to_csv(self.csv_path, index=False)
 
-        print(f'\n=== SCRAPING COMPLETE ===')
-        print(f'Total player records: {len(df)}')
-        print(f'Saved to: {filename}')
+        print(f'Saved {len(df)} actual scores to: {self.csv_path}')
 
         week_counts = df['week'].value_counts()
         for week, count in week_counts.items():
             print(f'Week {week}: {count}')
 
-        # position_counts = df['position'].value_counts()
-        # print(f"\nPlayers by Position:")
-        # for pos, count in position_counts.items():
-        #     print(f"{pos}: {count}")
-
         return df
+    
+    def save_to_db(self):
+        if not self.players:
+            raise ValueError('No players to save to db')
+        
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+
+            insert_query = """
+                INSERT INTO actual_scores (
+                    week, player_name, position, opponent, status,
+                    fantasy_points, pass_comp_att, passing_yards, passing_tds,
+                    interceptions_thrown, rushing_attempts, rushing_yards,
+                    rushing_tds, receptions, receiving_yards, receiving_tds,
+                    targets, two_point_conversions, fumbles_lost, return_tds,
+                    def_interceptions, fumble_recoveries, sacks, safeties, 
+                    blocked_kicks, points_allowed, yards_allowed
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?
+                )
+            """
+
+            score_data = []
+            for player in self.players:
+                score_data.append((
+                    self.week,
+                    player.get('name', ''),
+                    player.get('position', ''),
+                    player.get('OPP', ''),
+                    player.get('Status', ''),
+                    player.get('FPTS', None),
+                    player.get('COMP/ATT', ''),
+                    player.get('YDS', ''),
+                    player.get('TD', ''),
+                    player.get('INT', ''),
+                    player.get('CAR', ''),
+                    player.get('YDS', ''),  # Rushing yards
+                    player.get('TD', ''),   # Rushing TDs
+                    player.get('REC', ''),
+                    player.get('YDS', ''),  # Receiving yards
+                    player.get('TD', ''),   # Receiving TDs
+                    player.get('TAR', ''),
+                    player.get('2PT', ''),
+                    player.get('FL', ''),
+                    player.get('TD', ''),   # Return TDs
+                    player.get('INT', ''),  # Defensive INTs
+                    player.get('FR', ''),
+                    player.get('SACK', ''),
+                    player.get('SFTY', ''),
+                    player.get('BLK', ''),
+                    player.get('PA', ''),
+                    player.get('YA', '')
+                ))
+
+            cursor.executemany(insert_query, score_data)
+            conn.commit()
+            print(f"Inserted {len(score_data)} actual scores into database")
     
     def close(self):
         if self.browser:
             self.browser.quit()
-    
-def main():
-    print('ESPN Fantasy Football Actual Score Scraper')
-    print('=' * 60)
 
-    scraper = ESPNScoresScraper(headless=False)
+    def run(self):
+        try:
+            print(f"Starting ESPN scores scraper for week {self.week}...")
 
-    try:
-        players = scraper.scrape_week(week=2, max_pages=25)
+            players = self.scrape_all_pages()
+            if players:
+                self.save_to_csv()
+                self.save_to_db()
+                print(f"ESPN scores scraper completed successfully")
+                return len(players)
+            else:
+                print("No players scraped - check ESPN structure")
+                return 0
 
-        if players:
-            df = scraper.save_to_csv('../../data/sql/actual_scores_wk2.csv')
-
-            position_counts = df['position'].value_counts()
-            print(f"\nPosition breakdown:")
-            for pos, count in position_counts.items():
-                print(f"{pos}: {count}")
-        else:
-            print('No players scraped - check the page structure')
-
-    except Exception as e:
-        print(f'Error during scraping: {e}')
-
-    finally:
-        scraper.close()
-
-if __name__ == '__main__':
-    main()
+        except Exception as e:
+            print(f"ESPN scores scraper failed: {e}")
+            return 0
