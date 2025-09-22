@@ -2,7 +2,7 @@ from datetime import datetime
 from pathlib import Path
 import pandas as pd
 
-class StaticDataLoader:
+class SQLStaticDataLoader:
     def __init__(self, db_manager):
         self.db = db_manager
         self.data_dir = Path("data/sql")
