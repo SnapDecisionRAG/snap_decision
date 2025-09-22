@@ -5,10 +5,14 @@ from selenium.webdriver.common.by import By as selenium_by
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as selenium_ec
 from bs4 import BeautifulSoup
+from src.config import SQL_DATA_DIR
 
 class ESPNProjectionScraper:
-    def __init__(self, headless=True):
+    def __init__(self, db_manager, week, headless=True):
+        self.db = db_manager
+        self.week = week
         self.url = "https://fantasy.espn.com/football/players/projections"
+        self.csv_path = SQL_DATA_DIR / 'projections' / f'projections_week_{self.week}.csv'
         self.positions = {'QB', 'RB', 'WR', 'TE', 'K', 'D/ST'}
         self.players = []
 
@@ -143,7 +147,7 @@ class ESPNProjectionScraper:
         finally:
             self.browser.quit()
 
-    def save_to_csv(self, filename='../../data/sql/this_weeks_projections.csv'):
+    def save_to_csv(self):
         if not self.players:
             print('No players saved - ESPN structure may have changed')
             return None
@@ -151,11 +155,7 @@ class ESPNProjectionScraper:
         df = pd.DataFrame(self.players)
         df = df.drop_duplicates(subset=['name', 'position'], keep='first')
         df = df.sort_values(['position', 'name'])
-        df.to_csv(filename, index=False)
-
-        print(f"\nScraping complete!")
-        print(f"Total players found: {len(df)}")
-        print(f"Saved to: {filename}")
+        df.to_csv(self.csv_path, index=False)
 
         position_counts = df['position'].value_counts()
         print(f"\nPlayers by Position:")
@@ -163,23 +163,85 @@ class ESPNProjectionScraper:
             print(f"{pos}: {count}")
 
         return df
-    
-def main():
-    print("ESPN Fantasy Football Player Scraper")
-    print("=" * 50)
 
-    scraper = ESPNProjectionScraper(headless=False)
+    def save_to_db(self):
+        if not self.players:
+            raise ValueError('No projections to save to db')
+        
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
 
-    try:
-        players = scraper.scrape_all_pages(max_pages=25)
+            cursor.execute("DELETE FROM projections WHERE week = ?", (self.week,))
+            print(f"Deleted existing projections for week {self.week}")
 
-        if players:
-            scraper.save_to_csv('../../data/sql/this_weeks_projections.csv')
-        else:
-            print("No players scraped - check debug files")
+            insert_query = """
+                INSERT INTO projections (
+                    week, player_name, position, team, fantasy_points,
+                    pass_comp_att, passing_yards, passing_tds, interceptions_thrown,
+                    rushing_attempts, rushing_yards, rushing_tds, rushing_ypa,
+                    receptions, receiving_yards, receiving_tds, targets, receiving_ypc,
+                    fg_made_att_0_39, fg_made_att_40_49, fg_made_att_50_plus, fg_made_att_total, xp_made_att,
+                    sacks, def_interceptions, fumble_recoveries, return_tds, points_allowed, yards_allowed,
+                    fumbles_forced, assisted_tackles, total_tackles, passes_defensed
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
 
-    except Exception as e:
-        print(f"Error during scraping: {e}")
+            projection_data = []
+            for player in self.players:
+                projection_data.append((
+                    self.week,
+                    player.get('name', ''),
+                    player.get('position', ''),
+                    player.get('team', ''),
+                    player.get('fantasy_points', None),
+                    player.get('COMP/ATT', ''),
+                    player.get('YDS', ''),
+                    player.get('TD', ''),
+                    player.get('INT', ''),
+                    player.get('CAR', ''),
+                    player.get('YDS', ''),  # This might be rushing yards
+                    player.get('TD', ''),   # This might be rushing TDs
+                    player.get('YPC', ''),
+                    player.get('REC', ''),
+                    player.get('YDS', ''),  # This might be receiving yards
+                    player.get('TD', ''),   # This might be receiving TDs
+                    player.get('TAR', ''),
+                    player.get('YPC', ''),  # This might be receiving YPC
+                    player.get('0-39', ''),
+                    player.get('40-49', ''),
+                    player.get('50+', ''),
+                    player.get('FG', ''),
+                    player.get('XP', ''),
+                    player.get('SACK', ''),
+                    player.get('INT', ''),
+                    player.get('FR', ''),
+                    player.get('TD', ''),
+                    player.get('PA', ''),
+                    player.get('YA', ''),
+                    player.get('FF', ''),
+                    player.get('AST', ''),
+                    player.get('TOT', ''),
+                    player.get('PD', '')
+                ))
 
-if __name__ == "__main__":
-    main()
+            cursor.executemany(insert_query, projection_data)
+            conn.commit()
+            print(f"Inserted {len(projection_data)} projections into database")
+
+    def run(self):
+        try:
+            print(f"Starting ESPN projection scraper for week {self.week}...")
+
+            players = self.scrape_all_pages()
+            if players:
+                self.save_to_csv()
+                self.save_to_db()
+                print(f"ESPN projection scraper completed successfully for week {self.week}")
+                return len(players)
+            else:
+                print("No players scraped - check ESPN structure")
+                return 0
+
+        except Exception as e:
+            print(f"ESPN projection scraper failed: {e}")
+            return 0

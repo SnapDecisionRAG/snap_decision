@@ -5,12 +5,11 @@ from datetime import datetime, date
 
 from src.database.sql_db_manager import DBManager
 from src.database.sql_static_data_loader import StaticDataLoader
-from src.utils.scraper_utils import get_current_week, daily_needs_to_run, get_week_range
+from src.utils.scraper_utils import get_current_week, daily_needs_to_run, need_to_scrape_scores
 
 from src.scrapers.weather import WeatherScraper
 from src.scrapers.injuries import InjuriesScraper
 from src.scrapers.latest_news import NewsScraper
-from src.scrapers.latest_buzz import LatestBuzzScraper
 from src.scrapers.espn_projection_scraper import ESPNProjectionScraper
 from src.scrapers.espn_scores_scraper import ESPNScoresScraper
 
@@ -85,6 +84,71 @@ class ScraperController:
             self.execution_log['errors'].append(error_message)
             print(f"❌ {error_message}")
             return False
+
+    def run_projections_scraper(self):
+        scraper_name = 'projections'
+
+        try:
+            week = get_current_week(self.db)
+            if week == None:
+                self.execution_log['errors'].append(f"{scraper_name}: Could not determine current week")
+                return False
+
+            print(f"\n{'='*50}")
+            print(f"Running Projection Scraper for Week {week}")
+            print(f"{'='*50}")
+
+            number_records = ESPNProjectionScraper(self.db, week).run()
+
+            if number_records:
+                self.insert_scraper_run(scraper_name, "success", number_records)
+                self.execution_log['scrapers_run'].append(f"{scraper_name} (Week {week})")
+                print(f"✅ Projections scraper completed")
+                return True
+            else:
+                self.insert_scraper_run(scraper_name, "no_data", 0, "No Projections data found")
+                self.execution_log['scrapers_skipped'].append(f"{scraper_name}: No data available")
+                print(f"⚠️ Projections scraper: No data available")
+                return False
+
+        except Exception as e:
+            error_message = f"Projections scraper error: {e}"
+            self.insert_scraper_run(scraper_name, "error", 0, error_message)
+            self.execution_log['errors'].append(error_message)
+            print(f"❌ {error_message}")
+            return False
+        
+    def run_scores_scraper(self, week):
+        scraper_name = f'actual_scores_week_{week}'
+
+        try:
+            if week == None:
+                self.execution_log['errors'].append(f"{scraper_name}: Could not determine current week")
+                return False
+
+            print(f"\n{'='*50}")
+            print(f"Running Scores Scraper for Week {week}")
+            print(f"{'='*50}")
+
+            number_records = ESPNScoresScraper(self.db, week).run()
+
+            if number_records:
+                self.insert_scraper_run(scraper_name, "success", number_records)
+                self.execution_log['scrapers_run'].append(f"{scraper_name}")
+                print(f"✅ Scores scraper completed")
+                return True
+            else:
+                self.insert_scraper_run(scraper_name, "no_data", 0, "No Scores found")
+                self.execution_log['scrapers_skipped'].append(f"{scraper_name}: No data available")
+                print(f"⚠️ Scores scraper: No data available")
+                return False
+
+        except Exception as e:
+            error_message = f"Scores scraper error: {e}"
+            self.insert_scraper_run(scraper_name, "error", 0, error_message)
+            self.execution_log['errors'].append(error_message)
+            print(f"❌ {error_message}")
+            return False
         
     def run_injuries_scraper(self):
         scraper_name = 'injuries'
@@ -148,6 +212,14 @@ def main():
 
         if daily_needs_to_run(controller.db, "weather"):
             controller.run_weather_scraper()
+
+        if daily_needs_to_run(controller.db, "projections"):
+            controller.run_projections_scraper()
+
+        current_week = get_current_week(controller.db)
+        for week in range(1, current_week + 1):
+            if need_to_scrape_scores(controller.db, week):
+                controller.run_scores_scraper(week)
 
         controller.run_injuries_scraper()
         controller.run_news_scraper()

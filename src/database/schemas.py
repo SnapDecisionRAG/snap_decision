@@ -58,6 +58,7 @@ CREATE TABLE historical_stats (
 PROJECTIONS_SCHEMA = """
 CREATE TABLE projections (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    week INTEGER,
     player_name TEXT NOT NULL,
     position TEXT NOT NULL,
     team TEXT,
