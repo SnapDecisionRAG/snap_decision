@@ -70,7 +70,7 @@ def get_week_range(db_manager, week):
         """, (week - 1,))
 
         prev_result = cursor.fetchone()
-        if prev_result:
+        if prev_result and prev_result['last_game_date']: # needed null check
             prev_week_end = (
                 datetime.strptime(prev_result['last_game_date'], '%Y-%m-%d').date()
             )
@@ -79,3 +79,37 @@ def get_week_range(db_manager, week):
             week_start = week_end - timedelta(days=6)
 
         return week_start, week_end
+
+def need_to_scrape_scores(db_manager, week):
+    try:
+        _, week_end = get_week_range(db_manager, week)
+        today = datetime.today()
+
+        if today.date() <= week_end:
+            return False
+        
+        tuesday_after = week_end + timedelta(days=1)
+
+        can_scrape = today.date() > tuesday_after or (today.date() == tuesday_after and today.hour >= 10)
+        if not can_scrape:
+            return False
+
+        with db_manager.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT last_run, status 
+                FROM scrapers_last_run 
+                WHERE scraper_name = ? 
+                ORDER BY last_run DESC 
+                LIMIT 1
+            """, (f"actual_scores_week_{week}",))
+
+            result = cursor.fetchone()
+
+            if result and result['status'] == 'success':
+                return False
+
+        return True
+        
+    except Exception as e:
+        return False
