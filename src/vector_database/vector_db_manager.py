@@ -2,7 +2,7 @@ import chromadb
 from pathlib import Path
 from datetime import datetime
 
-class VectorStore:
+class VectorDBManager:
     def __init__(self, db_path):
         try:
             self.db_path = Path(db_path)
@@ -35,7 +35,7 @@ class VectorStore:
 
             print(f"Using existing collection: {self.collection_name}")
 
-        except ValueError:
+        except Exception:
             collection = self._create_collection()
 
             print(f"Created new collection: {self.collection_name}")
