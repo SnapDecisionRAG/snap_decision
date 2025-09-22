@@ -13,7 +13,7 @@ PROJECTIONS_DIR = SQL_DATA_DIR / 'projections'
 ACTUAL_SCORES_DIR = SQL_DATA_DIR / 'actual_scores'
 
 SQLITE_DB_PATH = DATABASE_DIR / 'ff_sql.db'
-CHROMA_DB_DIR = DATABASE_DIR / 'chroma_db'
+CHROMA_DB_DPATH = DATABASE_DIR / 'ff_vector.db'
 
 SCRAPER_MIN_HOUR = 10 #10 am
 

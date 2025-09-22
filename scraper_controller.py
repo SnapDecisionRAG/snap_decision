@@ -3,8 +3,8 @@
 import sys
 from datetime import datetime, date
 
-from src.database.sql_db_manager import DBManager
-from src.database.sql_static_data_loader import StaticDataLoader
+from src.sql_database.sql_db_manager import DBManager
+from src.sql_database.sql_static_data_loader import StaticDataLoader
 from src.utils.scraper_utils import get_current_week, daily_needs_to_run, need_to_scrape_scores
 
 from src.scrapers.weather import WeatherScraper

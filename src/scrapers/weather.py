@@ -213,7 +213,7 @@ class WeatherScraper:
             return False
 
 def main():
-    from src.database.sql_db_manager import DBManager
+    from src.sql_database.sql_db_manager import DBManager
     from src.utils.scraper_utils import get_current_week
 
     db_manager = DBManager()
