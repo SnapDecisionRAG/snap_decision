@@ -94,7 +94,6 @@ class ScraperController:
             print(f"Running Injuries Scraper")
             print(f"{'='*50}")
 
-
             number_records = InjuriesScraper(self.db).run()
 
             if number_records:
@@ -115,6 +114,34 @@ class ScraperController:
             print(f"❌ {error_message}")
             return False
 
+    def run_news_scraper(self):
+        scraper_name = 'latest_news'
+
+        try:
+            print(f"\n{'='*50}")
+            print(f"Running News Scraper")
+            print(f"{'='*50}")
+
+            number_records = NewsScraper(self.db).run()
+
+            if number_records:
+                self.insert_scraper_run(scraper_name, "success", number_records)
+                self.execution_log['scrapers_run'].append(f"{scraper_name} ({number_records} new reports)")
+                print(f"✅ News scraper completed")
+                return True
+            else:
+                self.insert_scraper_run(scraper_name, "no_data", 0, "No new news reports found")
+                self.execution_log['scrapers_skipped'].append(f"{scraper_name}: No new data")
+                print(f"⚠️ News scraper: No new reports")
+                return False
+
+        except Exception as e:
+            error_message = f"News scraper error: {e}"
+            self.insert_scraper_run(scraper_name, "error", 0, error_message)
+            self.execution_log['errors'].append(error_message)
+            print(f"❌ {error_message}")
+            return False
+
 def main():
     try:
         controller = ScraperController()
@@ -123,6 +150,7 @@ def main():
             controller.run_weather_scraper()
 
         controller.run_injuries_scraper()
+        controller.run_news_scraper()
 
     except Exception as e:
         print(f"Error running scrapers: {e}")
