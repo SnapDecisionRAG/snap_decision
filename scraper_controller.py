@@ -3,7 +3,7 @@
 import sys
 from datetime import datetime, date
 
-from src.sql_database.sql_db_manager import DBManager
+from src.sql_database.sql_db_manager import SQLDBManager
 from src.sql_database.sql_static_data_loader import SQLStaticDataLoader
 from src.utils.scraper_utils import get_current_week, daily_needs_to_run, need_to_scrape_scores
 
@@ -15,7 +15,7 @@ from src.scrapers.espn_scores_scraper import ESPNScoresScraper
 
 class ScraperController:
     def __init__(self):
-        self.db = DBManager()
+        self.db = SQLDBManager()
 
         if self._is_first_run():
             print("First run detected - Loading static data...")

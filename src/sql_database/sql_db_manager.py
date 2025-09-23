@@ -3,7 +3,7 @@ from pathlib import Path
 from contextlib import contextmanager
 from .schemas import SCHEMAS, INDEXES
 
-class DBManager:
+class SQLDBManager:
     def __init__(self):
         self.path = Path('database/ff_sql.db')
         self.path.parent.mkdir(parents=True, exist_ok=True)
