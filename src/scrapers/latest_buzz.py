@@ -1,4 +1,6 @@
 import time
+import re
+import hashlib
 import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.common.by import By as selenium_by
@@ -6,10 +8,13 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as selenium_ec
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
+from src.config import VECTOR_DATA_DIR
 
 class LatestBuzzScraper:
-    def __init__(self, headless=True):
+    def __init__(self, db_manager, headless=True):
+        self.db = db_manager
         self.url = "https://www.espn.com/fantasy/football/"
+        self.csv_path = VECTOR_DATA_DIR / 'latest_buzz.csv'
         self.article_dates = {6, 0, 1}
         self.articles = []
         self.scraped_articles = set()
@@ -175,37 +180,119 @@ class LatestBuzzScraper:
 
         return self.articles
     
-    def save_to_csv(self, filename='../../data/vector/latest_buzz.csv'):
+    def save_to_csv(self):
         if not self.articles:
             print('No articles saved - ESPN structure may have changed')
             return None
         
         df = pd.DataFrame(self.articles)
         df = df.drop_duplicates(subset=['url'], keep='first')
-        df.to_csv(filename, index=False)
+        df.to_csv(self.csv_path, index=False)
 
         print(f"\nScraping complete!")
         print(f"Total articles found: {len(df)}")
-        print(f"Saved to: {filename}")
+        print(f"Saved to: {self.csv_path}")
 
         return df
+    
+    def save_to_db(self):
+        if not self.articles:
+            print('No articles to save to vector database')
+            return False
+        
+        print('Processing articles for vector database...')
 
-def main():
-    print("ESPN Fantasy Football Latest Buzz Scraper")
-    print("=" * 50)
+        documents = []
+        for article in self.articles:
+            if not article.get('body') or not article.get('body').strip():
+                continue
 
-    try:
-        scraper = LatestBuzzScraper()
-        scraper.load_latest_buzz()
-        articles = scraper.scrape_articles()
+            cleaned_content = self.clean_article_content(article['body'])
+            if not cleaned_content.strip():
+                continue
 
-        if articles:
-            scraper.save_to_csv('../../data/vector/latest_buzz.csv')
+            doc_id = self.generate_article_id(article)
+            timestamp = self.normalize_timestamp(article.get('timestamp', ''))
+            doc = {
+                'id': doc_id,
+                'content': cleaned_content,
+                'metadata': {
+                    'content_type': 'expert_analysis',
+                    'title': article.get('title', ''),
+                    'author': article.get('author', ''),
+                    'timestamp': timestamp,
+                    'url': article.get('url'),
+                    'source': 'espn_latest_buzz',
+                    'static_content': False,
+                }
+            }
+
+            documents.append(doc)
+
+        if documents:
+            return self.db.add_documents(documents)
         else:
-            print("No articles scraped - check debug files")
+            print('Failed to add articles to vector database')
+            return False
+        
+    def clean_article_content(self, content):
+        # Remove excessive whitespace
+        content = re.sub(r'\n\s*\n\s*\n+', '\n\n', content)
+        content = re.sub(r'\s+', ' ', content)
+        
+        # Remove common web artifacts
+        content = re.sub(r'\bAdvertisement\b', '', content, flags=re.IGNORECASE)
+        content = re.sub(r'\bRead More\b', '', content, flags=re.IGNORECASE)
+        content = re.sub(r'\bSign Up\b', '', content, flags=re.IGNORECASE)
+        content = re.sub(r'\bSubscribe\b', '', content, flags=re.IGNORECASE)
+        
+        # Clean up bullet points and formatting
+        content = re.sub(r'^\s*•\s*', '', content, flags=re.MULTILINE)
+        content = re.sub(r'^\s*-\s*', '', content, flags=re.MULTILINE)
+        
+        return content.strip()
+    
+    def normalize_timestamp(self, timestamp):
+        if not timestamp:
+            return datetime.now().isoformat()
+        
+        try:
+            dt = datetime.strptime(timestamp, '%b %d, %Y, %I:%M %p ET')
+            return dt.isoformat()
+        except Exception:
+            return datetime.now().isoformat()
+        
+    def generate_article_id(self, article):
+        if article.get('url'):
+            content_string = article['url']
+        else:
+            content_string = (
+                f"{article.get('title', '')}{article.get('timestamp', '')}"
+            )
 
-    except Exception as e:
-        print(f"Error during scraping: {e}")
+        return f'buzz_{hashlib.md5(content_string.encode()).hexdigest()[:12]}'
+    
+    def run(self):
+        try:
+            print('Starting ESPN Fantasy Football Latest Buzz Scraper')
+            print('=' * 50)
 
-if __name__ == "__main__":
-    main()
+            self.load_latest_buzz()
+            articles = self.scrape_articles()
+
+            if articles:
+                self.save_to_csv()
+                self.save_to_db()
+                print('Latest buzz scraper completed successfully')
+                return len(articles)
+            else:
+                print('No articles scraped - check ESPN structure')
+                return 0
+            
+        except Exception as e:
+            print(f'Latest buzz scraper failed: {e}')
+            return 0
+        
+        finally:
+            if self.browser:
+                self.browser.quit()
