@@ -5,6 +5,8 @@ from datetime import datetime, date
 
 from src.sql_database.sql_db_manager import SQLDBManager
 from src.sql_database.sql_static_data_loader import SQLStaticDataLoader
+from src.vector_database.vector_db_manager import VectorDBManager
+from src.vector_database.vector_static_data_loader import VectorStaticDataLoader
 from src.utils.scraper_utils import get_current_week, daily_needs_to_run, need_to_scrape_scores
 
 from src.scrapers.weather import WeatherScraper
@@ -12,14 +14,19 @@ from src.scrapers.injuries import InjuriesScraper
 from src.scrapers.latest_news import NewsScraper
 from src.scrapers.espn_projection_scraper import ESPNProjectionScraper
 from src.scrapers.espn_scores_scraper import ESPNScoresScraper
+from src.scrapers.latest_buzz import LatestBuzzScraper
+
+from src.config import CHROMA_DB_DIR
 
 class ScraperController:
     def __init__(self):
-        self.db = SQLDBManager()
+        self.sql_db = SQLDBManager()
+        self.vector_db = VectorDBManager(CHROMA_DB_DIR)
 
         if self._is_first_run():
             print("First run detected - Loading static data...")
-            SQLStaticDataLoader(self.db)
+            SQLStaticDataLoader(self.sql_db)
+            VectorStaticDataLoader(self.vector_db)
 
         self.execution_log = {
             'timestamp': datetime.now(),
@@ -29,7 +36,7 @@ class ScraperController:
         }
 
     def _is_first_run(self):
-        with self.db.get_connection() as conn:
+        with self.sql_db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM schedule")
             row_count = cursor.fetchone()[0]
@@ -42,7 +49,7 @@ class ScraperController:
         records_processed=0,
         error_message=None
     ):
-        with self.db.get_connection() as conn:
+        with self.sql_db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO scrapers_last_run
@@ -56,7 +63,7 @@ class ScraperController:
         scraper_name = 'weather'
 
         try:
-            week = get_current_week(self.db)
+            week = get_current_week(self.sql_db)
             if week == None:
                 self.execution_log['errors'].append(f"{scraper_name}: Could not determine current week")
                 return False
@@ -65,7 +72,7 @@ class ScraperController:
             print(f"Running Weather Scraper for Week {week}")
             print(f"{'='*50}")
 
-            number_records = WeatherScraper(self.db, week).run()
+            number_records = WeatherScraper(self.sql_db, week).run()
 
             if number_records:
                 self.insert_scraper_run(scraper_name, "success", number_records)
@@ -89,7 +96,7 @@ class ScraperController:
         scraper_name = 'projections'
 
         try:
-            week = get_current_week(self.db)
+            week = get_current_week(self.sql_db)
             if week == None:
                 self.execution_log['errors'].append(f"{scraper_name}: Could not determine current week")
                 return False
@@ -98,7 +105,7 @@ class ScraperController:
             print(f"Running Projection Scraper for Week {week}")
             print(f"{'='*50}")
 
-            number_records = ESPNProjectionScraper(self.db, week).run()
+            number_records = ESPNProjectionScraper(self.sql_db, week).run()
 
             if number_records:
                 self.insert_scraper_run(scraper_name, "success", number_records)
@@ -130,7 +137,7 @@ class ScraperController:
             print(f"Running Scores Scraper for Week {week}")
             print(f"{'='*50}")
 
-            number_records = ESPNScoresScraper(self.db, week).run()
+            number_records = ESPNScoresScraper(self.sql_db, week).run()
 
             if number_records:
                 self.insert_scraper_run(scraper_name, "success", number_records)
@@ -158,7 +165,7 @@ class ScraperController:
             print(f"Running Injuries Scraper")
             print(f"{'='*50}")
 
-            number_records = InjuriesScraper(self.db).run()
+            number_records = InjuriesScraper(self.sql_db).run()
 
             if number_records:
                 self.insert_scraper_run(scraper_name, "success", number_records)
@@ -186,7 +193,7 @@ class ScraperController:
             print(f"Running News Scraper")
             print(f"{'='*50}")
 
-            number_records = NewsScraper(self.db).run()
+            number_records = NewsScraper(self.sql_db).run()
 
             if number_records:
                 self.insert_scraper_run(scraper_name, "success", number_records)
@@ -205,24 +212,53 @@ class ScraperController:
             self.execution_log['errors'].append(error_message)
             print(f"❌ {error_message}")
             return False
+        
+    def run_latest_buzz_scraper(self):
+        scraper_name = 'latest_buzz'
+
+        try:
+            print(f"\n{'='*50}")
+            print(f"Running Latest Buzz Scraper")
+            print(f"{'='*50}")
+
+            number_records = LatestBuzzScraper(self.vector_db).run()
+
+            if number_records:
+                self.insert_scraper_run(scraper_name, "success", number_records)
+                self.execution_log['scrapers_run'].append(f"{scraper_name} ({number_records} new articles)")
+                print(f"✅ Latest buzz scraper completed")
+                return True
+            else:
+                self.insert_scraper_run(scraper_name, "no_data", 0, "No new news articles found")
+                self.execution_log['scrapers_skipped'].append(f"{scraper_name}: No new data")
+                print(f"⚠️ Latest buzz scraper: No new articles")
+                return False
+
+        except Exception as e:
+            error_message = f"Latest buzz scraper error: {e}"
+            self.insert_scraper_run(scraper_name, "error", 0, error_message)
+            self.execution_log['errors'].append(error_message)
+            print(f"❌ {error_message}")
+            return False
 
 def main():
     try:
         controller = ScraperController()
 
-        if daily_needs_to_run(controller.db, "weather"):
+        if daily_needs_to_run(controller.sql_db, "weather"):
             controller.run_weather_scraper()
 
-        if daily_needs_to_run(controller.db, "projections"):
+        if daily_needs_to_run(controller.sql_db, "projections"):
             controller.run_projections_scraper()
 
-        current_week = get_current_week(controller.db)
+        current_week = get_current_week(controller.sql_db)
         for week in range(1, current_week + 1):
-            if need_to_scrape_scores(controller.db, week):
+            if need_to_scrape_scores(controller.sql_db, week):
                 controller.run_scores_scraper(week)
 
         controller.run_injuries_scraper()
         controller.run_news_scraper()
+        controller.run_latest_buzz_scraper()
 
     except Exception as e:
         print(f"Error running scrapers: {e}")

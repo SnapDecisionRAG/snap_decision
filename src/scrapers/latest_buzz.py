@@ -48,6 +48,27 @@ class LatestBuzzScraper:
             print(f'Page could not be scraped: {e}')
             return False
 
+    def get_existing_articles(self):
+        try:
+            existing_articles = self.db.collection.get(
+                where={'content_type': 'expert_analysis'},
+                include=['metadatas']
+            )
+
+            existing_urls = set()
+            metadatas = existing_articles.get('metadatas', [])
+
+            for metadata in metadatas:
+                url = metadata.get('url')
+                if url: existing_urls.add(url)
+
+            return existing_urls
+        
+        except Exception as e:
+            print(f"Warning: Could not check existing articles: {e}")
+            return set()
+
+
     def load_latest_buzz(self):
         try:
             self.browser.get(self.url)
@@ -134,6 +155,8 @@ class LatestBuzzScraper:
 
 
     def scrape_articles(self):
+        existing_articles = self.get_existing_articles()
+
         while True:
             page_source = self.browser.page_source
             if len(page_source) > 5000000: # 5MB to prevent selenium/eautifulSoup crash/hang
@@ -146,6 +169,11 @@ class LatestBuzzScraper:
             for article in loaded_articles:
                 url = article.get('data-src')
                 if url and url not in self.scraped_articles:
+                    full_url = f"https://www.espn.com{url}"
+                    if full_url in existing_articles:
+                        print(f"Article already exists in database, stopping scrape: {url}")
+                        return self.articles
+
                     current_article = article
                     self.scraped_articles.add(url)
                     break
@@ -159,6 +187,11 @@ class LatestBuzzScraper:
                 for article in loaded_articles:
                     url = article.get('data-src')
                     if url and url not in self.scraped_articles:
+                        full_url = f"https://www.espn.com{url}"
+                        if full_url in existing_articles:
+                            print(f"Article already exists in database, stopping scrape: {url}")
+                            return self.articles
+
                         current_article = article
                         self.scraped_articles.add(url)
                         break
@@ -286,7 +319,7 @@ class LatestBuzzScraper:
                 print('Latest buzz scraper completed successfully')
                 return len(articles)
             else:
-                print('No articles scraped - check ESPN structure')
+                print('No articles scraped')
                 return 0
             
         except Exception as e:
