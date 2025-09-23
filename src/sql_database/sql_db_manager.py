@@ -1,6 +1,7 @@
 import sqlite3
 from pathlib import Path
 from contextlib import contextmanager
+from datetime import datetime
 from .schemas import SCHEMAS, INDEXES
 
 class SQLDBManager:
@@ -8,13 +9,26 @@ class SQLDBManager:
         self.path = Path('database/ff_sql.db')
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
+        # Register datetime adapter to fix Python 3.12 deprecation warning
+        sqlite3.register_adapter(datetime, self._adapt_datetime)
+        sqlite3.register_converter("timestamp", self._convert_timestamp)
+
         self.initialize_db()
+
+    def _adapt_datetime(self, dt): # Fix Python3.12 DeprecationWarning
+        return dt.isoformat()
+
+    def _convert_timestamp(self, s): # Fix Python3.12 DeprecationWarning
+        return datetime.fromisoformat(s.decode('utf-8'))
 
     @contextmanager
     def get_connection(self):
         conn = None
         try:
-            conn = sqlite3.connect(self.path)
+            conn = sqlite3.connect(
+                self.path,
+                detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES
+            )
             conn.row_factory = sqlite3.Row
             yield conn
         except Exception as e:
