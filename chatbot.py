@@ -275,7 +275,7 @@ class Chatbot:
         self.agent_executor = AgentExecutor(
             agent=self.agent,
             tools=self.tools,
-            verbose=True, # show reasoning steps
+            verbose=False, # shows reasoning steps if True
             max_iterations=3,
             handle_parsing_errors=True
         )
