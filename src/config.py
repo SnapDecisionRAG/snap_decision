@@ -15,8 +15,6 @@ ACTUAL_SCORES_DIR = SQL_DATA_DIR / 'actual_scores'
 SQLITE_DB_PATH = DATABASE_DIR / 'ff_sql.db'
 CHROMA_DB_DIR = DATABASE_DIR / 'ff_vector'
 
-SCRAPER_MIN_HOUR = 10 #10 am
-
 def create_directories():
     directories = [
         DATA_DIR,
