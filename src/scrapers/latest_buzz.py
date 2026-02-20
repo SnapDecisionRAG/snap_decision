@@ -37,7 +37,7 @@ class LatestBuzzScraper:
         try:
             WebDriverWait(self.browser, timeout).until(
                 selenium_ec.presence_of_element_located(
-                    (selenium_by.CSS_SELECTOR, '#article-feed')
+                    (selenium_by.CSS_SELECTOR, '#news-feed')
                 )
             )
 
@@ -159,12 +159,12 @@ class LatestBuzzScraper:
 
         while True:
             page_source = self.browser.page_source
-            if len(page_source) > 5000000: # 5MB to prevent selenium/eautifulSoup crash/hang
+            if len(page_source) > 5000000: # 5MB to prevent selenium/BeautifulSoup crash/hang
                 print('All relevant articles scraped')
                 break
             soup = BeautifulSoup(page_source, 'html.parser')
 
-            loaded_articles = soup.select('#article-feed article.article')
+            loaded_articles = soup.select('#news-feed article.article')
             current_article = None
             for article in loaded_articles:
                 url = article.get('data-src')
@@ -182,7 +182,7 @@ class LatestBuzzScraper:
                 self.browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
                 time.sleep(2)
                 soup = BeautifulSoup(self.browser.page_source, 'html.parser')
-                loaded_articles = soup.select('#article-feed article.article')
+                loaded_articles = soup.select('#news-feed article.article')
                 current_article = None
                 for article in loaded_articles:
                     url = article.get('data-src')

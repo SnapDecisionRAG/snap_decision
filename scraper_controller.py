@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
-from datetime import datetime, date
+from datetime import datetime
 
 from src.sql_database.sql_db_manager import SQLDBManager
 from src.sql_database.sql_static_data_loader import SQLStaticDataLoader
@@ -252,6 +252,9 @@ def main():
             controller.run_projections_scraper()
 
         current_week = get_current_week(controller.sql_db)
+        if not current_week:
+            current_week = 18
+
         for week in range(1, current_week + 1):
             if need_to_scrape_scores(controller.sql_db, week):
                 controller.run_scores_scraper(week)

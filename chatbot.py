@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from typing import ClassVar, Type
+from typing import Type
 from dotenv import load_dotenv
 
 from langchain.agents import AgentExecutor, create_openai_tools_agent
@@ -23,8 +23,8 @@ class VectorSearchInput(BaseModel):
     query: str = Field(description="Natural language query about fantasy football strategy, rules, or advice")
 
 class SQLTool(BaseTool):
-    name: ClassVar[str] = "sql_query"
-    description: ClassVar[str] = """
+    name: str = "sql_query"
+    description: str = """
         Query the fantasy football SQL database for:
         - Player statistics and performance data
         - Weekly projections and actual scores  
@@ -37,21 +37,22 @@ class SQLTool(BaseTool):
     """
     args_schema: Type[SQLQueryInput] = SQLQueryInput
 
-    _db: SQLDBManager
-    _llm: ChatOpenAI
-    _schema_info: str
+    model_config = { "arbitrary_types_allowed": True }
+
+    db: SQLDBManager
+    llm: ChatOpenAI = None
+    schema_info: str = ""
 
     def __init__(self, db_manager):
-        super().__init__()
-        self._db = db_manager
-        self._llm = ChatOpenAI(model="gpt-4", temperature=0)
-        self._schema_info = self._get_table_schemas()
+        super().__init__(db=db_manager)
+        self.llm = ChatOpenAI(model="gpt-4", temperature=0)
+        self.schema_info = self._get_table_schemas()
 
     def _run(self, query):
         try:
             sql_query = self._natural_language_to_sql(query)
 
-            with self._db.get_connection() as conn:
+            with self.db.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(sql_query)
                 results = cursor.fetchall()
@@ -59,7 +60,7 @@ class SQLTool(BaseTool):
                 if not results:
                     return f"No data found for query: {query}"
 
-                return self._format_sql_results(results, query)
+                return self._format_sql_results(results)
 
         except Exception as e:
             return f"Error executing SQL query: {str(e)}"
@@ -71,7 +72,7 @@ class SQLTool(BaseTool):
             Query: "{query}"
 
             Available tables and their key columns:
-            {self._schema_info}
+            {self.schema_info}
 
             Rules:
             - Only use tables/columns listed above
@@ -86,7 +87,7 @@ class SQLTool(BaseTool):
         """
 
         try:
-            response = self._llm.invoke(prompt)
+            response = self.llm.invoke(prompt)
             sql_query = response.content.strip()
             sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
             return sql_query
@@ -161,7 +162,7 @@ class SQLTool(BaseTool):
             - time_et (TEXT): Game time
         """
     
-    def _format_sql_results(self, results, query):
+    def _format_sql_results(self, results):
         if not results:
             return "No results found"
 
@@ -179,8 +180,8 @@ class SQLTool(BaseTool):
         return formatted
 
 class VectorTool(BaseTool):
-    name: ClassVar[str] = "vector_query"
-    description: ClassVar[str] = """
+    name: str = "vector_query"
+    description: str = """
         Search the fantasy football knowledge base for:
         - Draft strategy and player evaluation advice
         - Waiver wire and free agency tips
@@ -195,15 +196,16 @@ class VectorTool(BaseTool):
 
     args_schema: Type[VectorSearchInput] = VectorSearchInput
 
-    _db: VectorDBManager
+    model_config = { "arbitrary_types_allowed": True }
+
+    db: VectorDBManager
 
     def __init__(self, db_manager):
-        super().__init__()
-        self._db = db_manager
+        super().__init__(db=db_manager)
 
     def _run(self, query):
         try:
-            results = self._db.search(query, limit=5, min_similarity=0.3)
+            results = self.db.search(query, limit=5, min_similarity=0.3)
 
             if not results:
                 return f"No relevant strategy content found for: {query}"
