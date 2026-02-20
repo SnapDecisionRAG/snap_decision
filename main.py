@@ -1,5 +1,6 @@
 import os
 import sys
+from src.config import create_directories
 from scraper_controller import main as run_scrapers
 from chatbot import main as start_chatbot
 
@@ -16,6 +17,14 @@ def main():
         sys.exit(1)
 
     print('Environment check passed')
+
+
+    try:
+        create_directories()
+    except Exception as e:
+        print(f'Failed to create directories: {e}')
+        sys.exit(1)
+
     print('\nRunning scraper controller...')
 
     try:
