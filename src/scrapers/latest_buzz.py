@@ -1,52 +1,24 @@
-import time
 import re
 import hashlib
+import requests
 import pandas as pd
-from selenium import webdriver
-from selenium.webdriver.common.by import By as selenium_by
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as selenium_ec
 from bs4 import BeautifulSoup
-from datetime import datetime, timedelta
+from datetime import datetime
 from src.config import VECTOR_DATA_DIR
 
+BASE_URL = "https://www.espn.com"
+
 class LatestBuzzScraper:
-    def __init__(self, db_manager, headless=True):
+    def __init__(self, db_manager):
         self.db = db_manager
-        self.url = "https://www.espn.com/fantasy/football/"
+        self.feed_url = f"{BASE_URL}/fantasy/football/"
         self.csv_path = VECTOR_DATA_DIR / 'latest_buzz.csv'
-        self.article_dates = {6, 0, 1}
         self.articles = []
-        self.scraped_articles = set()
 
-        chrome_options = webdriver.chrome.options.Options()
-        chrome_options.add_argument('--max_old_space_size=4096')
-        chrome_options.add_argument('--disable-extensions')
-        chrome_options.add_argument('--no-sandbox')
-        chrome_options.add_argument('--disable-dev-shm-usage')
-        chrome_options.add_argument('--disable-gpu')
-        chrome_options.add_argument('--window-size=1920,1080')
-        chrome_options.add_argument('--mute-audio')
-        chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
-
-        if headless: chrome_options.add_argument('--headless')
-
-        self.browser = webdriver.Chrome(options=chrome_options)
-
-    def wait_for_page_to_load(self, timeout=30):
-        try:
-            WebDriverWait(self.browser, timeout).until(
-                selenium_ec.presence_of_element_located(
-                    (selenium_by.CSS_SELECTOR, '#news-feed')
-                )
-            )
-
-            time.sleep(2)
-            return True
-
-        except Exception as e:
-            print(f'Page could not be scraped: {e}')
-            return False
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        })
 
     def get_existing_articles(self):
         try:
@@ -68,52 +40,55 @@ class LatestBuzzScraper:
             print(f"Warning: Could not check existing articles: {e}")
             return set()
 
+    def discover_articles(self):
+        """Fetch the feed page and extract fantasy article URLs from the card feed."""
+        response = self.session.get(self.feed_url)
+        response.raise_for_status()
 
-    def load_latest_buzz(self):
-        try:
-            self.browser.get(self.url)
-            button = WebDriverWait(self.browser, timeout=10, poll_frequency=0.1).until(
-                selenium_ec.element_to_be_clickable(
-                    (selenium_by.CSS_SELECTOR, "a[data-track-nav_item='latest buzz']")
-                )
-            )
-            button.click()
-            return True
-        except Exception as e:
-            print(f'error loading Latest Buzz: {e}')
-            return False
+        soup = BeautifulSoup(response.text, 'html.parser')
+        news_feed = soup.select_one('#news-feed')
+        if not news_feed:
+            print('Could not find #news-feed on page')
+            return []
 
-    def get_article_date(self, timestamp):
-        date_obj = datetime.strptime(timestamp, "%b %d, %Y, %I:%M %p ET")
-        return date_obj 
-    
-    def continue_scraping(self, article_date):
-        today = datetime.now()
-        days_since_tuesday = (today.weekday() - 1) % 7
-        this_weeks_tuesday = today - timedelta(days=days_since_tuesday)
-        this_weeks_sunday = this_weeks_tuesday - timedelta(days=2)
-        last_saturday = this_weeks_sunday - timedelta(days=1)
+        discovered = []
+        seen_urls = set()
 
-        if article_date.date() == last_saturday.date():
-            print('All relevant articles scraped')
-            return False
+        for link in news_feed.select('a[href*="/fantasy/football/story/"]'):
+            href = link.get('href', '')
+            if not href or href in seen_urls:
+                continue
+            seen_urls.add(href)
 
-        return True
-    
-    def scrape_this_article(self, article_date):
-        today = datetime.now()
-        days_since_tuesday = (today.weekday() - 1) % 7
-        this_weeks_tuesday = today - timedelta(days=days_since_tuesday)
-        this_weeks_sunday = this_weeks_tuesday - timedelta(days=2)
-        return this_weeks_tuesday.date() >= article_date.date() >= this_weeks_sunday.date()
+            url = f"{BASE_URL}{href}" if href.startswith('/') else href
 
-    def scrape(self, article):
+            title_el = link.select_one('h2.contentItem__title')
+            author_el = link.select_one('span.contentMeta__author')
+
+            discovered.append({
+                'url': url,
+                'feed_title': title_el.get_text().strip() if title_el else '',
+                'feed_author': author_el.get_text().strip() if author_el else '',
+            })
+
+        print(f"Discovered {len(discovered)} fantasy articles from feed")
+        return discovered
+
+    def fetch_and_scrape_article(self, url):
+        """Fetch an individual article page and extract its full content."""
+        response = self.session.get(url)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, 'html.parser')
+        return self.scrape(soup, url)
+
+    def scrape(self, soup, url):
         parsed_article = {}
 
-        title = article.select_one('header.article-header h1')
+        title = soup.select_one('header.article-header h1')
         parsed_article['title'] = title.get_text().strip() if title else ''
 
-        article_meta = article.select_one('.article-meta')
+        article_meta = soup.select_one('.article-meta')
         if article_meta:
             timestamp = article_meta.select_one('span.timestamp')
             author = article_meta.select_one('div.author')
@@ -130,9 +105,9 @@ class LatestBuzzScraper:
                 parsed_article['author'] = author_text
         else:
             parsed_article['timestamp'] = ''
-            parsed_article['author'] =  ''
+            parsed_article['author'] = ''
 
-        body = article.select_one('div.article-body')
+        body = soup.select_one('div.article-body')
         if body:
             unwanted_selectors = [
                 '.content-reactions', '.ad-slot', '.ad-wrapper', '.sponsored-links',
@@ -141,78 +116,17 @@ class LatestBuzzScraper:
                 '.video-player', '.play-button', '.social-share', '.share-tools', '.social-buttons',
                 '.breadcrumb', '.navigation',
             ]
-            for attribute in unwanted_selectors: # delete unwanted elements from DOM permanently
-                for element in body.select(attribute):
+            for selector in unwanted_selectors:
+                for element in body.select(selector):
                     element.decompose()
             parsed_article['body'] = body.get_text().strip()
         else:
             parsed_article['body'] = ''
 
-        url = article.get('data-src')
-        parsed_article['url'] = f"https://www.espn.com{url}" if url else ''
+        parsed_article['url'] = url
 
         return parsed_article
 
-
-    def scrape_articles(self):
-        existing_articles = self.get_existing_articles()
-
-        while True:
-            page_source = self.browser.page_source
-            if len(page_source) > 5000000: # 5MB to prevent selenium/BeautifulSoup crash/hang
-                print('All relevant articles scraped')
-                break
-            soup = BeautifulSoup(page_source, 'html.parser')
-
-            loaded_articles = soup.select('#news-feed article.article')
-            current_article = None
-            for article in loaded_articles:
-                url = article.get('data-src')
-                if url and url not in self.scraped_articles:
-                    full_url = f"https://www.espn.com{url}"
-                    if full_url in existing_articles:
-                        print(f"Article already exists in database, stopping scrape: {url}")
-                        return self.articles
-
-                    current_article = article
-                    self.scraped_articles.add(url)
-                    break
-
-            if not current_article: # try once more in case didn't scroll far enough
-                self.browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                time.sleep(2)
-                soup = BeautifulSoup(self.browser.page_source, 'html.parser')
-                loaded_articles = soup.select('#news-feed article.article')
-                current_article = None
-                for article in loaded_articles:
-                    url = article.get('data-src')
-                    if url and url not in self.scraped_articles:
-                        full_url = f"https://www.espn.com{url}"
-                        if full_url in existing_articles:
-                            print(f"Article already exists in database, stopping scrape: {url}")
-                            return self.articles
-
-                        current_article = article
-                        self.scraped_articles.add(url)
-                        break
-                
-                if not current_article:
-                    print("No more articles found")
-                    break
-
-            article_date = self.get_article_date(current_article.select_one('.timestamp').get_text())
-            if not self.continue_scraping(article_date):
-                break
-
-            if self.scrape_this_article(article_date):
-                self.articles.append(self.scrape(current_article))
-                print(url)
-                print(article_date)
-            self.browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(2)
-
-        return self.articles
-    
     def save_to_csv(self):
         if not self.articles:
             print('No articles saved - ESPN structure may have changed')
@@ -269,17 +183,14 @@ class LatestBuzzScraper:
             return False
         
     def clean_article_content(self, content):
-        # Remove excessive whitespace
         content = re.sub(r'\n\s*\n\s*\n+', '\n\n', content)
         content = re.sub(r'\s+', ' ', content)
         
-        # Remove common web artifacts
         content = re.sub(r'\bAdvertisement\b', '', content, flags=re.IGNORECASE)
         content = re.sub(r'\bRead More\b', '', content, flags=re.IGNORECASE)
         content = re.sub(r'\bSign Up\b', '', content, flags=re.IGNORECASE)
         content = re.sub(r'\bSubscribe\b', '', content, flags=re.IGNORECASE)
         
-        # Clean up bullet points and formatting
         content = re.sub(r'^\s*•\s*', '', content, flags=re.MULTILINE)
         content = re.sub(r'^\s*-\s*', '', content, flags=re.MULTILINE)
         
@@ -310,22 +221,35 @@ class LatestBuzzScraper:
             print('Starting ESPN Fantasy Football Latest Buzz Scraper')
             print('=' * 50)
 
-            self.load_latest_buzz()
-            articles = self.scrape_articles()
+            existing_urls = self.get_existing_articles()
+            discovered = self.discover_articles()
 
-            if articles:
+            for item in discovered:
+                url = item['url']
+
+                if url in existing_urls:
+                    print(f"Already in database, skipping: {item['feed_title']}")
+                    continue
+
+                try:
+                    article = self.fetch_and_scrape_article(url)
+                    if article.get('body'):
+                        self.articles.append(article)
+                        print(f"Scraped: {article['title']}")
+                    else:
+                        print(f"No body content found: {item['feed_title']}")
+                except Exception as e:
+                    print(f"Failed to fetch article {url}: {e}")
+
+            if self.articles:
                 self.save_to_csv()
                 self.save_to_db()
                 print('Latest buzz scraper completed successfully')
-                return len(articles)
+                return len(self.articles)
             else:
-                print('No articles scraped')
+                print('No new articles scraped')
                 return 0
             
         except Exception as e:
             print(f'Latest buzz scraper failed: {e}')
             return 0
-        
-        finally:
-            if self.browser:
-                self.browser.quit()

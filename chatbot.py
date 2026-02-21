@@ -90,6 +90,7 @@ class SQLTool(BaseTool):
             response = self.llm.invoke(prompt)
             sql_query = response.content.strip()
             sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
+            sql_query = sql_query.replace("\u201c", "").replace("\u201d", "").strip('"')
             return sql_query
         
         except Exception as e:
