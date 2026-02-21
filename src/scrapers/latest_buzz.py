@@ -14,6 +14,32 @@ class LatestBuzzScraper:
         self.feed_url = f"{BASE_URL}/fantasy/football/"
         self.csv_path = VECTOR_DATA_DIR / 'latest_buzz.csv'
         self.articles = []
+        self.scraped_articles = set()
+
+        chrome_options = webdriver.chrome.options.Options()
+        chrome_options.add_argument('--max_old_space_size=4096')
+        chrome_options.add_argument('--disable-extensions')
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--disable-gpu')
+        chrome_options.add_argument('--window-size=1920,1080')
+        chrome_options.add_argument('--mute-audio')
+        chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+
+        if headless: chrome_options.add_argument('--headless')
+
+        self.browser = webdriver.Chrome(options=chrome_options)
+
+    def wait_for_page_to_load(self, timeout=30):
+        try:
+            WebDriverWait(self.browser, timeout).until(
+                selenium_ec.presence_of_element_located(
+                    (selenium_by.CSS_SELECTOR, '#news-feed')
+                )
+            )
+
+            time.sleep(2)
+            return True
 
         self.session = requests.Session()
         self.session.headers.update({
@@ -127,6 +153,66 @@ class LatestBuzzScraper:
 
         return parsed_article
 
+
+    def scrape_articles(self):
+        existing_articles = self.get_existing_articles()
+
+        while True:
+            page_source = self.browser.page_source
+            if len(page_source) > 5000000: # 5MB to prevent selenium/BeautifulSoup crash/hang
+                print('All relevant articles scraped')
+                break
+            soup = BeautifulSoup(page_source, 'html.parser')
+
+            loaded_articles = soup.select('#news-feed article.article')
+            current_article = None
+            for article in loaded_articles:
+                url = article.get('data-src')
+                if url and url not in self.scraped_articles:
+                    full_url = f"https://www.espn.com{url}"
+                    if full_url in existing_articles:
+                        print(f"Article already exists in database, stopping scrape: {url}")
+                        return self.articles
+
+                    current_article = article
+                    self.scraped_articles.add(url)
+                    break
+
+            if not current_article: # try once more in case didn't scroll far enough
+                self.browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                time.sleep(2)
+                soup = BeautifulSoup(self.browser.page_source, 'html.parser')
+                loaded_articles = soup.select('#news-feed article.article')
+                current_article = None
+                for article in loaded_articles:
+                    url = article.get('data-src')
+                    if url and url not in self.scraped_articles:
+                        full_url = f"https://www.espn.com{url}"
+                        if full_url in existing_articles:
+                            print(f"Article already exists in database, stopping scrape: {url}")
+                            return self.articles
+
+                        current_article = article
+                        self.scraped_articles.add(url)
+                        break
+                
+                if not current_article:
+                    print("No more articles found")
+                    break
+
+            article_date = self.get_article_date(current_article.select_one('.timestamp').get_text())
+            if not self.continue_scraping(article_date):
+                break
+
+            if self.scrape_this_article(article_date):
+                self.articles.append(self.scrape(current_article))
+                print(url)
+                print(article_date)
+            self.browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(2)
+
+        return self.articles
+    
     def save_to_csv(self):
         if not self.articles:
             print('No articles saved - ESPN structure may have changed')
